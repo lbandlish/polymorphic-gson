@@ -9,6 +9,7 @@ import org.junit.Test;
 import polyGson.PolyGson;
 import polyGson.PolyGsonBuilder;
 
+import javax.crypto.Mac;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -113,6 +114,8 @@ public class PolyGsonTest {
     public void testToJson() throws IOException {
         TargetInterface target = new TargetInterfaceImpl("heya");
         Object origTarget = polyGson.fromJson(polyGson.toJson(target));
+
+        Person person = polyGson.fromJson(polyGson.toJson(new Person()), Person.class);
     }
 
     @Test

@@ -2,16 +2,15 @@ package polyGson;
 
 import com.google.gson.*;
 import com.google.gson.annotations.SerializedName;
-import com.google.gson.internal.$Gson$Types;
 import com.google.gson.internal.ConstructorConstructor;
 import com.google.gson.internal.ObjectConstructor;
-import com.google.gson.internal.Primitives;
 import com.google.gson.reflect.TypeToken;
 import com.google.gson.stream.JsonReader;
 
 import java.io.IOException;
 import java.io.StringReader;
-import java.lang.reflect.*;
+import java.lang.reflect.Array;
+import java.lang.reflect.Field;
 import java.util.*;
 
 public class PolyGson {
@@ -22,7 +21,6 @@ public class PolyGson {
     public static final String MAP = "_map";
 
     private final ConstructorConstructor constructorConstructor = new ConstructorConstructor(Collections.emptyMap());
-
     private final Gson gson;
 
     public PolyGson() {
@@ -36,151 +34,106 @@ public class PolyGson {
         this.gson = gson;
     }
 
-    public Gson getGson() {
-        return gson;
-    }
-
-    // TODO: Can have target type and use it to call gson.toJsonTree(src, type)
-    // (as current implementation uses .getClass() which skips generic information)
     public String toJson(Object src) {
         if (src == null) {
             return null;
         }
         JsonElement jsonElement = gson.toJsonTree(src);
-        JsonElement withClassInfo = createObjectWithClassInfo(src, jsonElement);
+        JsonElement withClassInfo = createElementWithClassInfo(src, jsonElement);
         return gson.toJson(withClassInfo);
     }
 
-    // TODO: Force it to provide target class type - especially in serializer Factory.
-    public Object fromJson(String json) throws IOException {
+    @SuppressWarnings("unchecked")
+    public <T> T fromJson(String json, Class<T> klass) {
+        return (T) fromJson(json);
+    }
+
+    public Object fromJson(String json) {
         StringReader reader = new StringReader(json);
         JsonReader jsonReader = new JsonReader(reader);
         return fromJson(jsonReader);
     }
 
-    private Object fromJson(JsonReader jsonReader) throws IOException {
-//        JsonToken token = jsonReader.peek();
-//        if (token == JsonToken.BEGIN_OBJECT) {
-//            JsonObject jsonObject = new JsonObject();
-//            jsonReader.beginObject();
-//            while (jsonReader.hasNext()) {
-//                String property = jsonReader.nextName();
-//                final TypeAdapter<JsonElement> adapter = gson.getAdapter(JsonElement.class);
-//                final JsonElement jsonElement = adapter.read(jsonReader);
-//                jsonObject.add(property, jsonElement);
-//            }
-//            jsonReader.endObject();
-//            try {
-//                return JsonObject_to_object(jsonObject);
-//            } catch (JsonSyntaxException e) {
-//                e.printStackTrace();
-//            }
-//        }
-        final TypeAdapter<JsonElement> adapter = gson.getAdapter(JsonElement.class);
-        final JsonElement jsonElement = adapter.read(jsonReader);
+    private Object fromJson(JsonReader jsonReader) {
+        TypeAdapter<JsonElement> adapter = gson.getAdapter(JsonElement.class);
         try {
-            return fromJsonElement(jsonElement);
+            return fromJson(jsonReader, adapter);
         } catch (JsonSyntaxException e) {
             throw new PolyGsonException(e);
         }
     }
 
-    private JsonElement createObjectWithClassInfo(Object src, JsonElement element) {
+    private Object fromJson(JsonReader jsonReader, TypeAdapter<JsonElement> adapter) {
+        try {
+            JsonElement jsonElement = adapter.read(jsonReader);
+            return fromJsonElement(jsonElement);
+        } catch (IOException e) {
+            throw new JsonSyntaxException(e);
+        }
+    }
 
-//        JsonObject outputObject = new JsonObject();
+    private JsonElement createElementWithClassInfo(Object src, JsonElement element) {
 
-        if (element == null) {
+        if (element == null || element.isJsonNull()) {
             return null;
-        } else if (element.isJsonPrimitive()) {
-            return createElementForPrimitive(src, element.getAsJsonPrimitive());
-        } else if (element.isJsonObject()) {
-            return createElementForObject(src, element.getAsJsonObject());
-        } else if (element.isJsonArray()) {
-            return createElementForJsonArray(src, element.getAsJsonArray());
-        } else if (element.isJsonNull()) {
-            return null;
+        }
+
+        JsonObject outputObject = new JsonObject();
+        outputObject.addProperty(CLASS, src.getClass().getName());
+
+        if (element.isJsonPrimitive()) {
+            return createElementFromPrimitive(element.getAsJsonPrimitive(), outputObject);
+        }
+        if (element.isJsonObject()) {
+            return createElementFromObject(src, element.getAsJsonObject(), outputObject);
+        }
+        if (element.isJsonArray()) {
+            return createElementFromJsonArray(src, element.getAsJsonArray(), outputObject);
         }
 
         throw new PolyGsonException("JsonElement not belonging to permitted types: " + element);
         // TODO: Remove this scenario
     }
 
-    private JsonElement createElementForPrimitive(Object src, JsonPrimitive primitive) {
-        JsonObject primitiveObject = new JsonObject();
-        primitiveObject.addProperty(CLASS, src.getClass().getName());
-        primitiveObject.add(VALUE, primitive);
-        return primitiveObject;
+    private JsonElement createElementFromPrimitive(JsonPrimitive primitive, JsonObject outputObject) {
+        outputObject.add(VALUE, primitive);
+        return outputObject;
     }
 
-    private JsonElement createElementForObject(Object src, JsonObject inputJsonObject) {
+    private JsonElement createElementFromObject(Object src, JsonObject inputJsonObject, JsonObject outputObject) {
         if (Map.class.isAssignableFrom(src.getClass())) {
-            return createElementForMap((Map<?, ?>) src);
+            return createElementFromMap((Map<?, ?>) src, outputObject);
         }
-        return createElementForObjectWithReflection(src, inputJsonObject);
+        return createElementFromObjectWithReflection(src, inputJsonObject, outputObject);
     }
 
-    private JsonElement createElementForJsonArray(Object src, JsonArray jsonArray) {
+    private JsonElement createElementFromJsonArray(Object src, JsonArray jsonArray, JsonObject outputObject) {
         Class<?> srcClass = src.getClass();
 
         if (Map.class.isAssignableFrom(srcClass)) {
-            return createElementForMap((Map<?, ?>) src);
-        } else if (Collection.class.isAssignableFrom(srcClass)) {
-            return createElementForCollection((Collection<?>) src, jsonArray);
-        } else if (srcClass.isArray()) {
-            return createElementForSimpleArray(src, jsonArray);
+            return createElementFromMap((Map<?, ?>) src, outputObject);
+        }
+        if (Collection.class.isAssignableFrom(srcClass)) {
+            return createElementFromCollection((Collection<?>) src, jsonArray, outputObject);
+        }
+        if (srcClass.isArray()) {
+            return createElementFromSimpleArray(src, jsonArray, outputObject);
         }
 
-        throw new PolyGsonException("input Object class did not match (Map, Collection, Array) for JsonArray element");
+        throw new PolyGsonException("input Object class did not match (Collection, Array) for JsonArray element, class name: " + srcClass.getName());
     }
 
-    private JsonObject createElementForSimpleArray(Object src, JsonArray inputJsonArray) {
-        if (Array.getLength(src) != inputJsonArray.size()) {
-            throw new PolyGsonException("Array Object vs jsonArray size mismatch: object size = " + Array.getLength(src) + ", jsonArray size = " + inputJsonArray.size());
-        }
-
-        JsonArray outputJsonArray = new JsonArray();
-        for (int i = 0; i < inputJsonArray.size(); ++i) {
-            outputJsonArray.add(createObjectWithClassInfo(Array.get(src, i), inputJsonArray.get(i)));
-        }
-
-        JsonObject outputObject = new JsonObject();
-        outputObject.addProperty(CLASS, src.getClass().getName());
-        outputObject.add(ARRAY, outputJsonArray);
-        return outputObject;
-    }
-
-    private JsonObject createElementForCollection(Collection<?> src, JsonArray inputJsonArray) {
-
-        if (src.size() != inputJsonArray.size()) {
-            throw new PolyGsonException("Collection Object vs jsonArray size mismatch: object size = " + src.size() + ", jsonArray size = " + inputJsonArray.size());
-        }
-
-        JsonArray outputJsonArray = new JsonArray();
-        Iterator<?> srcIterator = src.iterator();
-
-        for (JsonElement jsonElement : inputJsonArray) {
-            outputJsonArray.add(createObjectWithClassInfo(srcIterator.next(), jsonElement));
-        }
-
-        JsonObject outputObject = new JsonObject();
-        outputObject.addProperty(CLASS, src.getClass().getName());
-        outputObject.add(ARRAY, outputJsonArray);
-        return outputObject;
-    }
-
-    private JsonElement createElementForMap(Map<?, ?> src) {
-        JsonObject outputObject = new JsonObject();
-        outputObject.addProperty(CLASS, src.getClass().getName());
-
+    // Either of JsonObject and JsonArray might be used to represent Maps (Depending on key complexity)
+    private JsonElement createElementFromMap(Map<?, ?> src, JsonObject outputObject) {
         JsonArray jsonMapAsArray = new JsonArray();
 
         for (Map.Entry<?, ?> srcEntry : src.entrySet()) {
 
             JsonArray jsonMapAsArrayEntry = new JsonArray();
-            JsonElement key = gson.toJsonTree(srcEntry.getKey());
-            JsonElement value = gson.toJsonTree(srcEntry.getValue());
-            jsonMapAsArrayEntry.add(createObjectWithClassInfo(srcEntry.getKey(), key));          // key of target Map element
-            jsonMapAsArrayEntry.add(createObjectWithClassInfo(srcEntry.getValue(), value));      // value of target Map element
+            JsonElement keyJsonElement = gson.toJsonTree(srcEntry.getKey());
+            JsonElement valueJsonElement = gson.toJsonTree(srcEntry.getValue());
+            jsonMapAsArrayEntry.add(createElementWithClassInfo(srcEntry.getKey(), keyJsonElement));          // key of target Map element
+            jsonMapAsArrayEntry.add(createElementWithClassInfo(srcEntry.getValue(), valueJsonElement));      // value of target Map element
 
             jsonMapAsArray.add(jsonMapAsArrayEntry);
         }
@@ -189,15 +142,44 @@ public class PolyGson {
         return outputObject;
     }
 
-    private JsonObject createElementForObjectWithReflection(Object src, JsonObject inputJsonObject) {
-        JsonObject outputObject = new JsonObject();
-        outputObject.addProperty(CLASS, src.getClass().getName());
+    private JsonObject createElementFromCollection(Collection<?> src, JsonArray inputJsonArray, JsonObject outputObject) {
 
+        if (src.size() != inputJsonArray.size()) {
+            throw new PolyGsonException("Collection Object vs jsonArray size mismatch: object size = " + src.size()
+                                        + ", jsonArray size = " + inputJsonArray.size());
+        }
+
+        JsonArray outputJsonArray = new JsonArray();
+        Iterator<?> srcIterator = src.iterator();
+
+        for (JsonElement inputElement : inputJsonArray) {
+            outputJsonArray.add(createElementWithClassInfo(srcIterator.next(), inputElement));
+        }
+
+        outputObject.add(ARRAY, outputJsonArray);
+        return outputObject;
+    }
+
+    private JsonObject createElementFromSimpleArray(Object src, JsonArray inputJsonArray, JsonObject outputObject) {
+        if (Array.getLength(src) != inputJsonArray.size()) {
+            throw new PolyGsonException("Array Object vs jsonArray size mismatch: object size = "
+                                        + Array.getLength(src) + ", jsonArray size = " + inputJsonArray.size());
+        }
+
+        JsonArray outputJsonArray = new JsonArray();
+        for (int i = 0; i < inputJsonArray.size(); ++i) {
+            outputJsonArray.add(createElementWithClassInfo(Array.get(src, i), inputJsonArray.get(i)));
+        }
+
+        outputObject.add(ARRAY, outputJsonArray);
+        return outputObject;
+    }
+
+    private JsonObject createElementFromObjectWithReflection(Object src, JsonObject inputJsonObject, JsonObject outputObject) {
         // TODO: maintain cache for this map (Class vs This map) in case of performance issues.
         Map<String, Field> serializedNameVsField = createSerializedNameVsFieldMap(src.getClass());
 
         for (Map.Entry<String, JsonElement> entry : inputJsonObject.entrySet()) {
-//            try {
             if (!serializedNameVsField.containsKey(entry.getKey())) {
                 throw new PolyGsonException("No instance variable in class " + src.getClass().getName() + " with serialized name: " + entry.getKey());
             }
@@ -206,23 +188,17 @@ public class PolyGson {
                 Field field = serializedNameVsField.get(entry.getKey());
                 field.setAccessible(true);
                 Object instanceVariable = field.get(src);
-                JsonElement withClassInfo = createObjectWithClassInfo(instanceVariable, entry.getValue());
+                JsonElement withClassInfo = createElementWithClassInfo(instanceVariable, entry.getValue());
                 outputObject.add(entry.getKey(), withClassInfo);
 
             } catch (IllegalAccessException e) {
                 throw new PolyGsonException(e);
             }
-
-//            } catch (SecurityException | IllegalArgumentException | IllegalAccessException e) {
-//                e.printStackTrace();
-//            }
         }
 
         return outputObject;
     }
 
-    // TODO: Force it to provide target class type - especially in serializer.
-//    @SuppressWarnings({"unchecked", "rawtypes"})
     private Object fromJsonElement(JsonElement jsonElement) {
         if (jsonElement == null || jsonElement.isJsonNull()) {
             return null;
@@ -231,97 +207,107 @@ public class PolyGson {
         if (jsonElement.isJsonObject()) {
             try {
                 JsonObject jsonObject = jsonElement.getAsJsonObject();
-
                 String className = jsonObject.get(CLASS).getAsJsonPrimitive().getAsString();
                 Class<?> klass = Class.forName(className);
                 jsonObject.remove(CLASS);
 
                 if (jsonObject.has(VALUE)) {
-                    JsonElement jsonElement1 = jsonObject.get(VALUE);
-                    return gson.fromJson(jsonElement1, klass);
+                    return createObjectFromPrimitive(jsonObject, klass);
                 }
-
                 if (jsonObject.has(ARRAY)) {
-                    if (Collection.class.isAssignableFrom(klass)) {
-                        ObjectConstructor<Collection<Object>> constructor =
-                                (ObjectConstructor<Collection<Object>>) constructorConstructor.get(TypeToken.get(klass));
-                        Collection<Object> collection = constructor.construct();
-                        JsonArray jsonArray = jsonObject.get(ARRAY).getAsJsonArray();
-                        jsonArray.forEach(element -> collection.add(fromJsonElement(element)));
-                        return collection;
-                    }
-
-                    if (klass.isArray()) {
-                        JsonArray jsonArray = jsonObject.get(ARRAY).getAsJsonArray();
-                        int size = jsonArray.size();
-                        Object array = Array.newInstance(klass.getComponentType(), size);
-
-                        Iterator<JsonElement> iterator = jsonArray.iterator();
-                        for (int i = 0; i < size; i++) {
-                            Array.set(array, i, fromJsonElement(iterator.next()));
-                        }
-                        return array;
-                    }
-
-                    throw new PolyGsonException(klass.getName());
+                    return createObjectFromJsonArray(jsonObject, klass);
                 }
-
                 if (jsonObject.has(MAP)) {
-                    if (Map.class.isAssignableFrom(klass)) {
-                        ObjectConstructor<Map<Object, Object>> constructor =
-                                (ObjectConstructor<Map<Object, Object>>) constructorConstructor.get(TypeToken.get(klass));
-                        Map<Object, Object> map = constructor.construct();
-                        JsonArray jsonArray = jsonObject.get(MAP).getAsJsonArray();
-
-                        jsonArray.forEach(element -> {
-                            JsonArray subArray = element.getAsJsonArray();
-                            assert subArray.size() == 2; // TODO: REPLACE WITH PRECONDITION
-                            map.put(fromJsonElement(subArray.get(0)), fromJsonElement(subArray.get(1)));
-                        });
-
-                        return map;
-                    }
-
-                    throw new PolyGsonException(klass.getName());
+                    return createObjectFromMap(jsonObject, klass);
                 }
+                return createObjectFromObject(jsonObject, klass);
 
-                // JsonObject
-
-                Object obj = createObjectForClass(klass);
-                Map<String, Field> serializedNameVsField = createSerializedNameVsFieldMap(klass);
-
-                for (Map.Entry<String, JsonElement> entry : jsonObject.entrySet()) {
-                    if (!serializedNameVsField.containsKey(entry.getKey())) {
-                        throw new PolyGsonException("No instance variable in class " + klass.getName() + " with serialized name: " + entry.getKey());
-                    }
-                    Field field = serializedNameVsField.get(entry.getKey());
-                    Object instanceVariable = fromJsonElement(entry.getValue());
-                    field.setAccessible(true);
-                    field.set(obj, instanceVariable);
-                }
-
-                return obj;
-
-            } catch (ClassNotFoundException | InstantiationException | IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
+            } catch (ClassNotFoundException | IllegalAccessException | IllegalArgumentException e) {
                 throw new PolyGsonException(e);
             }
         }
 
         throw new PolyGsonException("input element is not jsonObject or null, input element: " + jsonElement);
+        // TODO: REMOVE THIS SCENARIO, preconditions?
     }
 
-    private Object createObjectForClass(Class<?> klass) throws InstantiationException, IllegalAccessException, InvocationTargetException {
-        Constructor<?>[] declaredConstructors = klass.getDeclaredConstructors();
-        Constructor<?> constructor = null;
-        for (Constructor<?> declaredConstructor : declaredConstructors) {
-            constructor = declaredConstructor;
-            if (constructor.getGenericParameterTypes().length == 0) {
-                break;
-            }
+    private Object createObjectFromPrimitive(JsonObject jsonObject, Class<?> klass) {
+        JsonElement value = jsonObject.get(VALUE);
+        return gson.fromJson(value, klass);
+    }
+
+    private Object createObjectFromJsonArray(JsonObject jsonObject, Class<?> klass) {
+        if (Collection.class.isAssignableFrom(klass)) {
+            return createObjectFromCollection(jsonObject, klass);
         }
-        constructor.setAccessible(true);
-        int numArgs = constructor.getGenericParameterTypes().length;
-        return constructor.newInstance(new Object[numArgs]);
+
+        if (klass.isArray()) {
+            return createObjectFromSimpleArray(jsonObject, klass);
+        }
+
+        throw new PolyGsonException("input Object class did not match (Collection, Array) for _ARRAY element, class name: " + klass.getName());
+    }
+
+    private Map<Object, Object> createObjectFromMap(JsonObject jsonObject, Class<?> klass) {
+        if (Map.class.isAssignableFrom(klass)) {
+            @SuppressWarnings("unchecked")
+            ObjectConstructor<Map<Object, Object>> constructor =
+                    (ObjectConstructor<Map<Object, Object>>) constructorConstructor.get(TypeToken.get(klass));
+            Map<Object, Object> map = constructor.construct();
+            JsonArray jsonArray = jsonObject.get(MAP).getAsJsonArray();
+
+            jsonArray.forEach(element -> {
+                JsonArray subArray = element.getAsJsonArray();
+                assert subArray.size() == 2; // TODO: REPLACE WITH PRECONDITION
+                map.put(fromJsonElement(subArray.get(0)), fromJsonElement(subArray.get(1)));
+            });
+
+            return map;
+        }
+
+        throw new PolyGsonException("input Object class did not match (Map) for _MAP element, class name: " + klass.getName());
+        // TODO: REMOVE AFTER CHECKING
+    }
+
+    private Object createObjectFromObject(JsonObject jsonObject, Class<?> klass) throws IllegalAccessException {
+
+        @SuppressWarnings("unchecked")
+        ObjectConstructor<Object> constructor = (ObjectConstructor<Object>) constructorConstructor.get(TypeToken.get(klass));
+        Object object = constructor.construct();
+        Map<String, Field> serializedNameVsField = createSerializedNameVsFieldMap(klass);
+
+        for (Map.Entry<String, JsonElement> entry : jsonObject.entrySet()) {
+            if (!serializedNameVsField.containsKey(entry.getKey())) {
+                throw new PolyGsonException("No instance variable in class " + klass.getName() + " with serialized name: " + entry.getKey());
+            }
+            Field field = serializedNameVsField.get(entry.getKey());
+            Object instanceVariable = fromJsonElement(entry.getValue());
+            field.setAccessible(true);
+            field.set(object, instanceVariable);
+        }
+
+        return object;
+    }
+
+    private Collection<Object> createObjectFromCollection(JsonObject jsonObject, Class<?> klass) {
+        @SuppressWarnings("unchecked")
+        ObjectConstructor<Collection<Object>> constructor =
+                (ObjectConstructor<Collection<Object>>) constructorConstructor.get(TypeToken.get(klass));
+        Collection<Object> collection = constructor.construct();
+        JsonArray jsonArray = jsonObject.get(ARRAY).getAsJsonArray();
+        jsonArray.forEach(element -> collection.add(fromJsonElement(element)));
+        return collection;
+    }
+
+    private Object createObjectFromSimpleArray(JsonObject jsonObject, Class<?> klass) {
+        JsonArray jsonArray = jsonObject.get(ARRAY).getAsJsonArray();
+        int size = jsonArray.size();
+        Object array = Array.newInstance(klass.getComponentType(), size);
+
+        for (int i = 0; i < size; i++) {
+            Array.set(array, i, fromJsonElement(jsonArray.get(i)));
+        }
+        return array;
     }
 
     private <T> Map<String, Field> createSerializedNameVsFieldMap(Class<T> klass) {

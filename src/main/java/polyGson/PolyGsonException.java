@@ -8,7 +8,4 @@ public class PolyGsonException extends RuntimeException {
     public PolyGsonException(Throwable throwable) {
         super(throwable);
     }
-
-    public PolyGsonException() {
-    }
 }
