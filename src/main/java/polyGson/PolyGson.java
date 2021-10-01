@@ -49,6 +49,9 @@ public class PolyGson {
     }
 
     public Object fromJson(String json) {
+        if (json == null) {
+            return null;
+        }
         StringReader reader = new StringReader(json);
         JsonReader jsonReader = new JsonReader(reader);
         return fromJson(jsonReader);
@@ -177,7 +180,8 @@ public class PolyGson {
 
     private JsonObject createElementFromObjectWithReflection(Object src, JsonObject inputJsonObject, JsonObject outputObject) {
         // TODO: maintain cache for this map (Class vs This map) in case of performance issues.
-        Map<String, Field> serializedNameVsField = createSerializedNameVsFieldMap(src.getClass());
+        Map<String, Field> serializedNameVsField = new HashMap<>();
+        populateSerializedNameVsFieldMap(src.getClass(), serializedNameVsField);
 
         for (Map.Entry<String, JsonElement> entry : inputJsonObject.entrySet()) {
             if (!serializedNameVsField.containsKey(entry.getKey())) {
@@ -274,7 +278,8 @@ public class PolyGson {
         @SuppressWarnings("unchecked")
         ObjectConstructor<Object> constructor = (ObjectConstructor<Object>) constructorConstructor.get(TypeToken.get(klass));
         Object object = constructor.construct();
-        Map<String, Field> serializedNameVsField = createSerializedNameVsFieldMap(klass);
+        Map<String, Field> serializedNameVsField = new HashMap<>();
+        populateSerializedNameVsFieldMap(klass, serializedNameVsField);
 
         for (Map.Entry<String, JsonElement> entry : jsonObject.entrySet()) {
             if (!serializedNameVsField.containsKey(entry.getKey())) {
@@ -310,7 +315,7 @@ public class PolyGson {
         return array;
     }
 
-    private <T> Map<String, Field> createSerializedNameVsFieldMap(Class<T> klass) {
+    private Map<String, Field> createSerializedNameVsFieldMap(Class<?> klass) {
         List<Field> fields = getAllFields(klass);
         Map<String, Field> map = new HashMap<>();
         for (Field field : fields) {
@@ -324,6 +329,22 @@ public class PolyGson {
             map.put(key, field);
         }
         return map;
+    }
+
+    private void populateSerializedNameVsFieldMap(Class<?> klass, Map<String, Field> map) {
+        for (Field field : klass.getDeclaredFields()) {
+            if (field.isSynthetic()) {
+                continue;
+            }
+            String key = getFieldSerializedName(field);
+            if (map.containsKey(key)) {
+                key = klass.getName() + "." + key;
+            }
+            map.put(key, field);
+        }
+        if (klass.getSuperclass() != null) {
+            populateSerializedNameVsFieldMap(klass.getSuperclass(), map);
+        }
     }
 
     private String getFieldSerializedName(Field field) {

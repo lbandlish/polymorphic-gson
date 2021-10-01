@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.reflect.TypeToken;
+import com.thoughtworks.xstream.XStream;
 import org.junit.Before;
 import org.junit.Test;
 import polyGson.PolyGson;
@@ -11,12 +12,11 @@ import polyGson.PolyGsonBuilder;
 
 import javax.crypto.Mac;
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 public class PolyGsonTest {
+
+    XStream xstream = new XStream();
 
     PolyGson polyGson;
     Gson gson;
@@ -29,6 +29,7 @@ public class PolyGsonTest {
                 .create();
 
         polyGson = new PolyGsonBuilder()
+//                .enableComplexMapKeySerialization()
                 .setPrettyPrinting()
                 .create();
 
@@ -122,9 +123,32 @@ public class PolyGsonTest {
     public void testShit() {
         TestClass obj = new TestClass();
         obj.getClass().getFields();
+
+        SampleSubObject sampleSubObject = new SampleSubObject("supvar1", "supvar2", "supvar3");
+        sampleSubObject.var1 = "subvar1";
+        sampleSubObject.var2 = "subvar2";
+
+
+        String xml = xstream.toXML(sampleSubObject);
+        SampleSubObject subObject = (SampleSubObject) xstream.fromXML(xml);
+        String json = polyGson.toJson(sampleSubObject);
+        SampleSubObject subObjectPoly = polyGson.fromJson(json, SampleSubObject.class);
     }
 
-    class Machine {
+    @Test
+    public void testComplexKey() {
+        ComplexMap complexMap = new ComplexMap();
+        complexMap.mapInternal = new HashMap<>();
+        complexMap.mapInternal.put(new Machine("customMachine"), new Person());
+
+        String gsonDeserialize = gson.toJson(complexMap);
+        String polyGsonDeserialize = polyGson.toJson(complexMap);
+
+        ComplexMap gsonMap = gson.fromJson(gsonDeserialize, ComplexMap.class);
+        ComplexMap polyGsonMap = polyGson.fromJson(polyGsonDeserialize, ComplexMap.class);
+    }
+
+    static class Machine {
         public String type;
 
         public Machine() {
@@ -155,7 +179,7 @@ public class PolyGsonTest {
         }
     }
 
-    class Person {
+    static class Person {
         @SerializedName("serializedNameMachine")
         Machine machine;
 
@@ -186,4 +210,53 @@ public class PolyGsonTest {
         private String privateStringSuper;
     }
 
+    class ComplexMap {
+        public Map<Machine, Person> mapInternal;
+    }
+
+
+    private static class SampleObject {
+        private String var1;
+        public String var2;
+        public String var3;
+
+        int[] arr;
+
+        public SampleObject(String var1, String var2, String var3) {
+            this.var1 = var1;
+            this.var2 = var2;
+            this.var3 = var3;
+        }
+
+
+//        @Override
+//        public boolean equals(Object obj) {
+//            if (obj instanceof SampleObject) {
+//                SampleObject sampleObject = (SampleObject) obj;
+//                return StringUtils.equals(var1, sampleObject.var1) && StringUtils.equals(var2, sampleObject.var2);
+//            }
+//            return false;
+//        }
+
+    }
+
+
+    private static class SampleSubObject extends SampleObject {
+
+        String subField = "default";
+        private String var1;
+        public String var2;
+
+        public SampleSubObject(String var1, String var2, String var3) {
+            super(var1, var2, var3);
+        }
+
+//        @Override
+//        public boolean equals(Object obj) {
+//            if (obj instanceof SampleSubObject) {
+//                return super.equals(obj) && StringUtils.equals(subField, ((SampleSubObject) obj).subField);
+//            }
+//            return false;
+//        }
+    }
 }
