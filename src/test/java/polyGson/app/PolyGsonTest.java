@@ -10,9 +10,10 @@ import org.junit.Test;
 import polyGson.PolyGson;
 import polyGson.PolyGsonBuilder;
 
-import javax.crypto.Mac;
 import java.io.IOException;
 import java.util.*;
+
+import static org.junit.Assert.assertEquals;
 
 public class PolyGsonTest {
 
@@ -112,6 +113,57 @@ public class PolyGsonTest {
     }
 
     @Test
+    public void testEnum() {
+
+        String json = polyGson.toJson(SampleEnum.ENUM1);
+        SampleEnum sampleEnum = polyGson.fromJson(json, SampleEnum.class);
+        System.out.println(json);
+
+        json = polyGson.toJson(SampleEnum.ENUM2);
+        sampleEnum = polyGson.fromJson(json, SampleEnum.class);
+        System.out.println(json);
+
+        SampleSubObject subObject = new SampleSubObject("var1", "var2", "var3");
+        json = polyGson.toJson(subObject);
+        subObject = polyGson.fromJson(json, SampleSubObject.class);
+        System.out.println(json);
+
+        subObject.sampleEnum = SampleEnum.ENUM2;
+        json = polyGson.toJson(subObject);
+        subObject = polyGson.fromJson(json, SampleSubObject.class);
+        System.out.println(json);
+    }
+
+    @Test
+    public void testSelfReferencingObj() {
+        SelfReferencing obj = new SelfReferencing();
+        obj.id = "topLevel";
+        obj.selfReferencer = obj;
+
+        String json = polyGson.toJson(obj);
+        System.out.println(json);
+//        SelfReferencing obj = new SelfReferencing();
+//        SelfReferencer referencer = new SelfReferencer();
+//        referencer.innerId = "InnerIDValue";
+//        obj.id = "outerIDValue";
+//        referencer.reference = obj;
+//        obj.selfReferencer = referencer;
+//
+//        String xml = xstream.toXML(obj);
+//        System.out.println(xml);
+    }
+
+    @Test
+    public void testStatic() {
+        SampleObject obj = new SampleObject("1", "2", "3");
+        String json = polyGson.toJson(obj);
+        System.out.println(json);
+
+        SampleObject polyObj = polyGson.fromJson(json, SampleObject.class);
+        System.out.println(gson.toJson(polyObj));
+    }
+
+    @Test
     public void testToJson() throws IOException {
         TargetInterface target = new TargetInterfaceImpl("heya");
         Object origTarget = polyGson.fromJson(polyGson.toJson(target));
@@ -130,8 +182,12 @@ public class PolyGsonTest {
 
 
         String xml = xstream.toXML(sampleSubObject);
+        System.out.println("XML:");
+        System.out.println(xml);
         SampleSubObject subObject = (SampleSubObject) xstream.fromXML(xml);
         String json = polyGson.toJson(sampleSubObject);
+        System.out.println("POLYGSON:");
+        System.out.println(json);
         SampleSubObject subObjectPoly = polyGson.fromJson(json, SampleSubObject.class);
     }
 
@@ -220,6 +276,8 @@ public class PolyGsonTest {
         public String var2;
         public String var3;
 
+        public static String GAME = "GAMEVAL";
+
         int[] arr;
 
         public SampleObject(String var1, String var2, String var3) {
@@ -246,6 +304,7 @@ public class PolyGsonTest {
         String subField = "default";
         private String var1;
         public String var2;
+        SampleEnum sampleEnum = SampleEnum.ENUM2;
 
         public SampleSubObject(String var1, String var2, String var3) {
             super(var1, var2, var3);
@@ -259,4 +318,35 @@ public class PolyGsonTest {
 //            return false;
 //        }
     }
+
+    private enum SampleEnum {
+        ENUM1("fieldEnum1"),
+        ENUM2("fieldEnum2") {
+            @Override
+            public String toString() {
+                return super.toString() + "inner";
+            }
+        };
+
+        private final String field;
+
+        private String getField() {
+            return field;
+        };
+
+        SampleEnum(String field) {
+            this.field = field;
+        }
+    }
+
+    private class SelfReferencing {
+        SelfReferencing selfReferencer;
+        String id;
+    }
+
+    private class SelfReferencer {
+        SelfReferencing reference;
+        String innerId;
+    }
+
 }
