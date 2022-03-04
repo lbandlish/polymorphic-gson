@@ -1,23 +1,0 @@
-class java.util.HashMap
-{
-  "serializedNameMachine": {
-    "type": "machine type"
-  },
-  "peopleCount": 5
-}
-yo
-{
-0  "_class": "polyGson.app.PolyGsonTest$Person",
-  "serializedNameMachine": {
-3    "_class": "polyGson.app.PolyGsonTest$Machine",
-    "type": {
-$      "_class": "java.lang.String",
-      "_value": "machine type"
-    }
-  },
-  "peopleCount": {
-#    "_class": "java.lang.Integer",
-    "_value": 5
-  }
-}
-yow

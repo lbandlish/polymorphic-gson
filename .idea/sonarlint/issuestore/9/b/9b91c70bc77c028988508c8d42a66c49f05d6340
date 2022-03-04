@@ -1,10 +1,0 @@
-
-g	java:S101"MRename this class name to match the regular expression '^[A-Z][a-zA-Z0-9]*$'.(íŒ©¶ùÿÿÿÿ
-b
-java:S1104"MMake x a static final constant or non-public and provide accessors if needed.(–ÿÔ:
-h
-java:S1104"MMake y a static final constant or non-public and provide accessors if needed.(ãá¢Éÿÿÿÿÿ
-0
-java:S1220""Move this file to a named package.
-T
-java:S3400"9Remove this method and declare a constant for this value.(‚Ì’ˆýÿÿÿÿ

@@ -21,5 +21,17 @@ dependencies {
         force = true
     }
     compile group: 'com.thoughtworks.xstream', name: 'xstream', version: '1.4.9'
+    dependencies {
+        compile (group: 'com.google.guava', name: 'guava', version: '14.0')
+    }
+    implementation 'org.apache.commons:commons-lang3:3.6'
+    compile group: 'com.esotericsoftware', name: 'kryo-shaded', version: '4.0.2'
+    compile(group: 'de.javakaffee', name: 'kryo-serializers', version: '0.43') {
+        exclude group: "com.google.protobuf"
+        exclude group: "com.google.guava"
+        exclude group: "joda-time"
+        exclude group: "com.esotericsoftware"
+    }
+
 }
 

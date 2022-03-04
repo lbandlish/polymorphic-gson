@@ -6,6 +6,7 @@ import com.google.gson.internal.ConstructorConstructor;
 import com.google.gson.internal.ObjectConstructor;
 import com.google.gson.reflect.TypeToken;
 import com.google.gson.stream.JsonReader;
+import sun.misc.Unsafe;
 
 import java.io.IOException;
 import java.io.StringReader;
@@ -23,15 +24,23 @@ public class PolyGson {
     public static final String COLLECTION = "__coll";
     public static final String MAP = "__map";
 
+    private final Unsafe unsafe;
     private final ConstructorConstructor constructorConstructor = new ConstructorConstructor(Collections.emptyMap());
     private final Gson gson;
 
     public PolyGson() {
-        gson = new GsonBuilder().create();
+        this(new GsonBuilder().create());
     }
 
     PolyGson(Gson gson) {
         this.gson = gson;
+        try {
+            Field unsafeField = Unsafe.class.getDeclaredField("theUnsafe");
+            unsafeField.setAccessible(true);
+            unsafe = (Unsafe) unsafeField.get(null);
+        } catch (IllegalAccessException | NoSuchFieldException e) {
+            throw new PolyGsonException(e);
+        }
     }
 
     public String toJson(Object src) {
@@ -295,17 +304,15 @@ public class PolyGson {
 
         jsonArray.forEach(element -> {
             JsonArray subArray = element.getAsJsonArray();
-            assert subArray.size() == 2; // TODO: REPLACE WITH PRECONDITION
+            assert subArray.size() == 2;
             outputMap.put(fromJsonElement(subArray.get(0)), fromJsonElement(subArray.get(1)));
         });
         return outputMap;
     }
 
     private Object createObjectFromJson(JsonObject jsonObject, Class<?> klass) throws IllegalAccessException {
-
-        @SuppressWarnings("unchecked")
-        ObjectConstructor<Object> constructor = (ObjectConstructor<Object>) constructorConstructor.get(TypeToken.get(klass));
-        Object outputObject = constructor.construct();
+        Object outputObject;
+        outputObject = createNewInstance(klass);
         Map<String, Field> serializedNameVsField = new HashMap<>();
         populateSerializedNameVsFieldMap(klass, serializedNameVsField);
 
@@ -321,6 +328,14 @@ public class PolyGson {
         }
 
         return outputObject;
+    }
+
+    private Object createNewInstance(Class<?> klass) {
+        try {
+            return unsafe.allocateInstance(klass);
+        } catch (SecurityException | InstantiationException | IllegalArgumentException e) {
+            throw new PolyGsonException(e);
+        }
     }
 
     private void populateSerializedNameVsFieldMap(Class<?> klass, Map<String, Field> map) {

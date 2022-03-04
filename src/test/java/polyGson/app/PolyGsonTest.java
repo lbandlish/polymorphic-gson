@@ -5,6 +5,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.reflect.TypeToken;
 import com.thoughtworks.xstream.XStream;
+import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.Test;
 import polyGson.PolyGson;
@@ -19,7 +20,9 @@ public class PolyGsonTest {
 
     XStream xstream = new XStream();
 
-    PolyGson polyGson;
+//    PolyGson polyGson;
+    Gson polyGson;
+//    KryoMarshaller polyGson;
     Gson gson;
 
     @Before
@@ -29,15 +32,22 @@ public class PolyGsonTest {
                 .setPrettyPrinting()
                 .create();
 
-        polyGson = new PolyGsonBuilder()
-//                .enableComplexMapKeySerialization()
-                .setPrettyPrinting()
-                .create();
+//        polyGson = DelegatePolyGson.polyGsonDelegate;
+//        polyGson = new PolyGsonBuilder()
+////                .enableComplexMapKeySerialization()
+//                .setPrettyPrinting()
+//                .create();
+
+        polyGson = DelegatePolyGson.CLASS_NAME_GSON;
+//        polyGson = new KryoMarshaller(Object.class);
 
     }
 
     @Test
     public void testPolyGson2() throws IOException, ClassNotFoundException {
+
+        polyGson.fromJson(polyGson.toJson("hello"), String.class);
+        polyGson.fromJson(polyGson.toJson(4), int.class);
 
         Map<String, Integer> map = new HashMap<>();
         System.out.println(map.getClass());
@@ -50,7 +60,7 @@ public class PolyGsonTest {
 
         Person personGson = gson.fromJson(gson.toJson(person), Person.class);
         System.out.println("yow");
-        Person personPolyGson = (Person) polyGson.fromJson(polyGson.toJson(person));
+        Person personPolyGson = (Person) polyGson.fromJson(polyGson.toJson(person), Person.class);
 
 //        System.out.println(Class.forName(int.class.getName()).getName());
 //        int x = 91;
@@ -64,32 +74,73 @@ public class PolyGsonTest {
     }
 
     @Test
+    public void testMap() {
+        Map<SampleObject2, SampleObject2> map = new HashMap<>();
+        map.put(new SampleObject2("key1.1", "key1.2"), new SampleObject2("val1.1", "val1.2"));
+        map.put(new SampleObject2("key2.1", "key2.2"), new SampleObject2("val2.1", "val2.2"));
+        Map<SampleObject2, SampleObject2> mapType = gson.fromJson(gson.toJson(map), new TypeToken<Map<SampleObject2, SampleObject2>>(){}.getType());
+        Map<SampleObject2, SampleObject2> mapClass = gson.fromJson(gson.toJson(map), HashMap.class);
+//        assertSerializeDeserialize(map, Map.class);
+
+        String opString = polyGson.toJson(map);
+        System.out.println(opString);
+        Map<SampleObject2, SampleObject2> mapOp = polyGson.fromJson(opString, Map.class);
+
+    }
+
+    public static class SampleObject2 {
+
+        private final String var1;
+        public String var2;
+
+        public SampleObject2(String var1, String var2) {
+            this.var1 = var1;
+            this.var2 = var2;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj != null && obj.getClass() == getClass()) {
+                SampleObject sampleObject = (SampleObject) obj;
+                return StringUtils.equals(var1, sampleObject.var1)
+                        && StringUtils.equals(var2, sampleObject.var2);
+            }
+            return false;
+        }
+
+        @Override
+        public int hashCode() {
+            return var1.hashCode() * var2.hashCode();
+        }
+    }
+
+    @Test
     public void testPolyJson() throws IOException {
         Person person = new Person(new Computer());
         person.dontSerialize = "dontSerializeText";
-        String person_string = gson.toJson(person);
-        System.out.println("GSON SERIALIZE");
-        System.out.println(person_string);
+//        String person_string = gson.toJson(person);
+//        System.out.println("GSON SERIALIZE");
+//        System.out.println(person_string);
 
         String poly_person_string = polyGson.toJson(person);
         System.out.println("POLYGSON SERIALIZE");
         System.out.println(poly_person_string);
 
-        Person person_ret = gson.fromJson(person_string, person.getClass());
-        person_ret.print();
+//        Person person_ret = gson.fromJson(person_string, person.getClass());
+//        person_ret.print();
 
 //		Person person = new Person(new Computer());
 //		String person_string = polyGson.toJson(person);
 //		System.out.println(person_string);
-//		Person person_ret = polyGson.fromJson(person_string);
-//		person_ret.print();
+		Person person_ret = polyGson.fromJson(poly_person_string, Person.class);
+		person_ret.print();
 
 
         Set<String> set = new HashSet<String>();
         set.add("hi");
         String set_json = polyGson.toJson(set);
         System.out.println(set_json);
-        Set<String> set_ret = (Set<String>) polyGson.fromJson(set_json);
+        Set<String> set_ret = (Set<String>) polyGson.fromJson(set_json, Set.class);
         System.out.println(set_ret);
 
 
@@ -106,10 +157,11 @@ public class PolyGsonTest {
         mp.put(2, "ap");
         String x = polyGson.toJson(mp);
         System.out.println(x);
-        Map<Integer, String> mp_ret = (Map<Integer, String>) polyGson.fromJson(x);
-        for (Map.Entry<Integer, String> entry : mp_ret.entrySet()) {
-            System.out.println(entry.getKey()+1);
-        }
+        Map<Integer, String> mp_ret = (Map<Integer, String>) polyGson.fromJson(x, Map.class);
+        System.out.println(mp_ret);
+//        for (Map.Entry<Integer, String> entry : mp_ret.entrySet()) {
+//            System.out.println(entry.getKey()+1);
+//        }
     }
 
     @Test
@@ -166,7 +218,7 @@ public class PolyGsonTest {
     @Test
     public void testToJson() throws IOException {
         TargetInterface target = new TargetInterfaceImpl("heya");
-        Object origTarget = polyGson.fromJson(polyGson.toJson(target));
+        Object origTarget = polyGson.fromJson(polyGson.toJson(target), TargetInterface.class);
 
         Person person = polyGson.fromJson(polyGson.toJson(new Person()), Person.class);
     }
